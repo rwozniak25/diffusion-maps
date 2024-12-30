@@ -1,0 +1,212 @@
+Diffusion Maps Walk-Through
+Rebecca Wozniak 
+Johns Hopkins University
+12/10/2024 
+
+In data science, there are countless ways that data may be structured, and nearly 
+countless ways to interpret that data. One problem commonly encountered is determining how to 
+approach sets of data with many features. Which features are most relevant to the patterns seen in 
+the data? And which features are just introducing more noise? One method for addressing these 
+problems is diffusion mapping. Diffusion mapping is an algorithm designed to reduce 
+dimensionality in a dataset that removes redundancy – such as when two features are derived from 
+one another – as well as improves the efficiency and accuracy of machine learning algorithms if 
+they are run later. In this paper, we will walk through the diffusion mapping process in Python using 
+a standard Swiss roll example, and later using a real world dataset to showcase the various 
+applications of diffusion maps. 
+
+Diffusion maps work by finding the diffusion distance between each data point and using it 
+to determine similarity. Diffusion distance, unlike Euclidean distance, takes into account more 
+than just geometric distance – for example, two points that may be physically far apart but have 
+many paths between them or high probabilities of those paths being taken will have a very close 
+diffusion distance. These distances are stored in a diffusion matrix upon which eigenvalue 
+decomposition is performed to translate the data into a lower-dimensional space. The eigenvalues 
+in this scenario contain the diffusion rates of the datapoint pairs, while the eigenvectors hold the 
+strongest directions of the distances. From here, there will be an obvious difference in magnitude 
+between the highest eigenvalues and the rest; taking only these eigenvalues and their respective 
+eigenvectors allows the data to be represented in a dramatically lower dimension. 
+
+One key aspect of diffusion mapping is that it excels in situations where relationships in the 
+data are non-linear, setting it apart from techniques such as Principle Component Analysis. A set 
+of photos is taken of an object; all photos show the same object but at various angles and 
+distances. The dataset containing these photos has very high dimensionality, since every pixel in 
+the photos is stored as a feature. Though all of the photos are of the same object, due to their 
+different perspectives, the relationships between datapoints are non-linear, rendering PCA 
+ineffective (an example of a linearly related dataset would be identical photos with varying 
+brightnesses or colorations). However, diffusion mapping and its use of eigenvectors allows us to 
+reconstruct the original object in four dimensions only – three physical ones and one for coloration. 
+This scenario is particularly useful in the field of facial recognition; other uses will be discussed 
+later. 
+
+The main downside to using diffusion mapping is in its complexity and relative 
+computational intensity. As this algorithm is typically used on datasets with very high 
+dimensionality, the size of the set can easily balloon into the prohibitively high range. This is 
+compounded by the fact that pairwise distances must be calculated for each set of datapoints, 
+causing a time complexity of O(n2) for this step alone. Additionally, there is a component of 
+interpretation that is required to render diffusion mapping successful; while methods like PCA yield 
+clear, numerical values that reveal relationships between features, diffusion coordinates are only 
+as useful as the scientist reading them. 
+
+Earlier, the use of diffusion mapping in image reconstruction was discussed, but there are 
+many other uses across other fields. In the same way that diffusion maps can unearth patterns 
+such as angle and distance in a set of pictures, they can find patterns across time as well. Diffusion 
+mapping is a strong candidate for analyzing temporal data, as it is typically represented in very high 
+dimensions (times or dates) with relatively few samples. 
+
+As an example, I used a dataset of 1,000 Wikipedia pages and how many hits they received 
+each day between July 2015 and December 2016. As there are 550 columns – each one a different 
+date – it would be overwhelming to try identifying patterns within the data using more conventional 
+techniques, especially as there are no other details about the pages stored in the dataset. 
+Though the only values given are the number of hits per day, I calculated the maximum 
+number of hits per page, the day this maximum was reached, and the range between the most and 
+least hits per page. These won’t be used within the diffusion mapping algorithm, but will be useful 
+for the following analysis. The last pre-processing step is to normalize the hit magnitude so that 
+more popular pages don’t have a higher impact on the diffusion.  
+
+Entering the diffusion mapping process, we create a distance matrix to contain the 
+distances between every point pair. For this dataset, I chose first to use the standard Euclidean 
+distance calculation as it works well with time series data, but found that the resulting diffusion 
+map was too strongly weighted by extrema. The alternate Chebyshev distance yielded a better 
+map, as it considers all dimensions equally important: 
+
+�
+�(𝑝,𝑞) = max(|𝑝1 −𝑞1|,|𝑝2 −𝑞2|,…,|𝑝𝑛 −𝑞𝑛|) 
+Next, another matrix is built to convert our Chebyshev distances into similarities, or the 
+likelihood that two points will interact. Because the dimensions in our Wikipedia data are not 
+actually spatial, similarities will more accurately represent the structure of the data than the raw 
+distances found above. An affinity matrix is populated with these similarities, called kernels: 
+
+�
+�𝑖𝑗 = exp(−𝑑(𝑥𝑖,𝑦𝑗)2
+ 2𝜎2)
+
+The σ in the above equation controls the scale of the kernel, or the range at which one point 
+may transition into another. A common way to define σ is to set it as the median value in the 
+distance matrix; this method is used in our example and we find that σ ≈ 1.07. This parameter can 
+be adjusted through trial and error if the resulting diffusion map isn’t satisfactory. 
+A third matrix, the Markov transition matrix, is constructed next. The purpose of this matrix 
+is simply to normalize the affinity matrix so that each row sums to 1: 
+
+�
+�𝑖𝑗 = 𝐴𝑖𝑗
+ ∑ 𝐴𝑖𝑘
+ 𝑘
+
+ This completes the transformation of the original values into probabilities, simulating a matrix of 
+random walk likelihoods. 
+
+We now compute eigenvalues and eigenvectors for the Markov matrix. In the context of 
+diffusion mapping, eigenvalues describe the rate at which the random walk proceeds across the 
+dataset over time. Eigenvectors are sets of vectors that point towards the direction of the most 
+likely ‘step’ in the random walk. Each eigenvalue is associated with one eigenvector, and the 
+combination of the two describe the overall geometry of the data, or the data manifold. The 
+calculation of these pairs is done using NumPy’s linalg library in our example, but they are broadly 
+computed in this formula, where λ represents the set of eigenvalues and φ represents the set of 
+eigenvectors: 
+
+�
+�𝜙𝑘 =𝜆𝑘𝜙𝑘 
+
+Once the eigenvalues and eigenvectors are calculated, they are sorted by eigenvalues in 
+descending order. The first, highest eigenvalue is 1, which represents the stationary distribution – a 
+manifold in which the probabilities of being in each state have converged and no longer change. For 
+the purposes of diffusion mapping, this eigenvalue (and its corresponding eigenvector) can be 
+dropped since it provides no insights into the structure or motion of the dataset. 
+We are now left with 999 eigen-pairs – obviously still too many to reduce dimensionality. 
+However, by plotting the ordered eigenvalues, we can see that there is a steep drop-off after the 
+first two points: 
+
+Since the magnitude of the eigenvalue signifies the strength of influence that its eigenvector 
+has on the structure of the data, we only care to keep the ones that are significantly large. The 
+eigenvalues beyond the first two are much smaller and most likely only represent noise or 
+unimportant, small details in the manifold. So, only the first two are kept, signifying that the 
+diffusion map will be represented in two dimensions. 
+
+The final conditioning step is to scale the eigenvectors using a chosen diffusion time, t. For 
+this example, using a value of t = 1 was satisfactory, so the eigenvectors did not change. If this t 
+value did not yield a useful diffusion map, however, it could be increased or decreased depending 
+on the need – if more global structures need to be emphasized, a larger t could be used. 
+Conversely, if we want to see more detailed and localized patterns within the manifold, a smaller t 
+could be used. The formula for this scaling is below: 
+
+�
+�𝑜𝑜𝑟𝑑𝑖𝑛𝑎𝑡𝑒𝑠 = 𝜙 ∗(𝑡 ∗λ) 
+
+We now have everything we need to plot the dimension map for our Wikipedia dataset. As 
+we have transformed the two eigen-pairs into coordinates, we can set them as x- and y-axes. For a 
+visualization aid, the calculations from earlier (most hits, date of most hits, hit range) are appended 
+to the coordinates in a dataframe so that they can be shown in rollover text. Further, each point is 
+colored according to the range of hit values for its respective Wikipedia page. The resulting plot is 
+below: 
+
+The scatterplot forms an arrow-like shape with points trending diagonally down and to the 
+right and points trending diagonally up and to the right. The density of datapoints also increases as 
+Coordinate 1 increases. Additionally, there appears to be a higher number of non-blue datapoints 
+in the bottom half of the arrow, or, pages with a large range between lowest and highest number of 
+hits. To take a closer look, I printed ten pages with the highest Coordinate 1 values and ten pages 
+with the lowest Coordinate 1 values, and did the same for Coordinate 2 as well: 
+
+The pages with the highest C1 values don’t appear to have much, if anything, in common. 
+They are mostly pages for people and the number of hits is relatively low for each one, but nothing 
+stands out. The pages with the lowest C1 values, however, appear to follow a more significant 
+pattern – these are pages that were searched because of an event. The Olympics, Super Bowl 
+champions, movie releases, or celebrity deaths. This is supported by the large hit ranges on these 
+pages, suggesting that they are not normally searched outside of the impeding event. Using this 
+information, we can intuit that C1 represents how likely it is that a page was searched due to 
+current events, with higher C1 values indicating a smaller likelihood. 
+
+The ten pages with the highest Coordinate 2 values has a lot of overlap with the Coordinate 
+1 minimums; ie, pages that were searched due to a corresponding real world event. The bottom 
+ten, however, shows us a new set of pages. After some deductive reasoning, I came to the 
+conclusion that C2 represents the pages with varying frequency of high hit counts. The pages in the 
+bottom ten – particularly holidays such as Halloween, or Cinco de Mayo – most likely have annual 
+hit spikes. Pages in the top ten have less frequent spikes, such as four year intervals for the 
+Olympics, or perhaps one non-recurring spike for film releases. 
+
+With these conclusions in hand, the diffusion mapping process has successfully reduced a 
+550-dimension dataset down to two dimensions that display the underlying structures dictating the 
+dataset. These two patterns can help inform further analysis, whether it is PCA analysis, linear 
+regression, or even other visualizations. 
+
+Throughout the process of experimenting with diffusion maps, I came across a few 
+unexpected hurdles. The most impactful one was discovering that diffusion mapping will not work 
+for a majority of datasets. I was originally planning to use a dataset of temporal NYC taxi data but 
+found that the number of features did not lend itself to diffusion mapping – several other, simpler 
+processing algorithms would work much better. Another dataset contained handwriting samples of 
+potential Alzheimer's patients, which I thought had a high enough dimensionality to be a good 
+subject for diffusion mapping. However, though the organization of the data fit the parameters for 
+this algorithm, the diffusion coordinates did not reveal any underlying structure regardless of my 
+choices for σ or diffusion time. This has led me to the conclusion that diffusion mapping is complex 
+and computationally expensive, and not an algorithm to follow in the first attempt of exploring a 
+dataset. 
+
+On the other hand, the ability of diffusion mapping to not only reveal structural trends in 
+high-dimensional data, but to do it in such a way that it can be implicitly understood using a simple 
+scatter plot, solidifies its place as an incredibly useful tool for a specific type of data. The more I 
+explored the topic of diffusion maps, the more I realized that this was a tool that could crack open 
+what I once considered impenetrable sets of data. 
+
+Barkan, O., Weill, J., Wolf, L., & Aronowitz, H. (2013). Fast High Dimensional Vector Multiplication 
+Face Recognition. In Proceedings of the IEEE International Conference on Computer Vision (ICCV) 
+IEEE. https://www.cvfoundation.org/openaccess/content_iccv_2013/papers/Barkan_Fast_High_Dimensional_2013_IC
+ CV_paper.pdf 
+
+Cilia, N. D., De Stefano, C., Fontanella, F., & Di Freca, A. S. (2018). An experimental protocol to 
+support cognitive impairment diagnosis by using handwriting analysis. Procedia Computer 
+Science, 141, 466–471. https://doi.org/10.1016/j.procs.2018.10.141 
+
+Cilia, N. D., De Gregorio, G., De Stefano, C., Fontanella, F., Marcelli, A., & Parziale, A. (2022). 
+Diagnosing Alzheimer’s disease from online handwriting: A novel dataset and performance 
+benchmarking. Engineering Applications of Artificial Intelligence, 111, Article 104822. 
+https://doi.org/10.1016/j.engappai.2022.104822 
+
+GeeksforGeeks. (n.d.). Swiss roll reduction with LLE in scikit-learn. GeeksforGeeks. 
+https://www.geeksforgeeks.org/swiss-roll-reduction-with-lle-in-scikit-learn/# 
+
+Joshi, N. (2018, April 6). Unwrapping the Swiss Roll. Towards Data Science. 
+https://towardsdatascience.com/unwrapping-the-swiss-roll-9249301bd6b7 
+
+Kaggle. (n.d.). Web Traffic Time Series Forecasting [Data set]. Retrieved December 12, 2024, from 
+https://www.kaggle.com/competitions/web-traffic-time-series-forecasting/data 
+
+Krishnaswamy Lab. (2022, January 13). Diffusion Maps | Unsupervised Learning for Big Data 
+[Video]. YouTube.  https://www.youtube.com/watch?v=pevW0L-TEbg 
